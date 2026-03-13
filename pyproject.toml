@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "youtube-exercise-summary"
+version = "0.1.0"
+description = "Generate single-file HTML exercise summaries from YouTube workout videos."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+keywords = ["youtube", "workout", "ocr", "html", "video"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Video",
+]
+dependencies = [
+  "Pillow",
+  "rapidocr-onnxruntime",
+]
+
+[project.optional-dependencies]
+whisper = [
+  "openai-whisper",
+]
+
+[project.scripts]
+youtube-exercise-summary = "main:main"
+
+[tool.setuptools]
+include-package-data = true
+py-modules = ["main", "schemas"]
+
+[tool.setuptools.packages.find]
+include = ["pipeline*"]
+
+[tool.setuptools.package-data]
+pipeline = ["templates/*.j2"]
