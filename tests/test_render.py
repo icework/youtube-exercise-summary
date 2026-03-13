@@ -86,8 +86,7 @@ class RenderTests(unittest.TestCase):
             self.assertIn("data:image/jpeg;base64", html)
             self.assertIn("Jumping Jacks", html)
             self.assertIn("Sample Workout", html)
-            self.assertIn("Name Source:", html)
-            self.assertIn("Visual match fallback", html)
+            self.assertNotIn("Name Source:", html)
 
 
 if __name__ == "__main__":

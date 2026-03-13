@@ -1521,7 +1521,9 @@ def _count_descending_pairs(numbers: list[int | None]) -> tuple[int, int, int]:
             continue
         if previous_number is not None:
             difference = previous_number - number
-            if 1 <= difference <= 2:
+            # Profile-time probing samples sparsely, but the current detector samples
+            # densely enough that a genuine countdown should not drop by more than 4.
+            if 1 <= difference <= 4:
                 descending_pairs += 1
                 current_streak += 1
             elif number >= previous_number + 6 or (previous_number <= 3 and number >= 28):
@@ -3347,6 +3349,10 @@ def build_timer_workout_summary(
     )
 
 
+def _profile_has_timer_signal(profile: VisionProfile) -> bool:
+    return bool(profile.timer_box_id or profile.timer_hits > 0 or profile.next_card_hits > 0)
+
+
 def build_general_visual_workout_summary(
     video_path: Path,
     workdir: Path,
@@ -3365,7 +3371,7 @@ def build_general_visual_workout_summary(
     )
     profile = _detect_visual_style(profile_frames)
 
-    if profile.timer_box_id is None and profile.style == "overlay_bar":
+    if not _profile_has_timer_signal(profile) and profile.style == "overlay_bar":
         try:
             return build_visual_workout_summary(
                 video_path=video_path,
@@ -3377,20 +3383,6 @@ def build_general_visual_workout_summary(
                 sample_interval_sec=sample_interval_sec,
             )
         except VisionExtractionError:
-            if profile.timer_hits > 0 or profile.next_card_hits > 0:
-                return build_timer_workout_summary(
-                    video_path=video_path,
-                    workdir=workdir,
-                    title=title,
-                    source_url=source_url,
-                    total_duration_sec=total_duration_sec,
-                    language=language,
-                    sample_interval_sec=sample_interval_sec,
-                    style_hint="timer_only",
-                    timer_box_id=profile.timer_box_id or "top_right",
-                    preview_box_id=profile.preview_box_id,
-                    preview_box_ratios=profile.preview_box_ratios,
-                )
             raise
 
     return build_timer_workout_summary(

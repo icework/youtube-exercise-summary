@@ -11,6 +11,7 @@ from pipeline.vision import (
     CountdownSegmentSpan,
     OcrDetection,
     OcrFrameInfo,
+    VisionProfile,
     TimerSegment,
     _build_ocr_crops,
     _build_ocr_frame_infos,
@@ -19,6 +20,7 @@ from pipeline.vision import (
     _build_countdown_spans,
     _build_timer_segments,
     _build_timer_segments_with_rapidocr,
+    _count_descending_pairs,
     _build_timeline_segments,
     _detect_dark_header_specs,
     _detect_preview_box,
@@ -26,6 +28,7 @@ from pipeline.vision import (
     _extract_timer_kind,
     _merge_timeline_segments,
     _normalize_label,
+    _profile_has_timer_signal,
     _rapidocr_python,
     _rapidocr_text_map,
     _refine_preview_box_ratios,
@@ -39,10 +42,105 @@ from pipeline.vision import (
     _split_compound_token,
     TimerTimelineSegment,
     build_timer_workout_summary,
+    build_general_visual_workout_summary,
 )
 
 
 class VisionTests(unittest.TestCase):
+    def test_profile_has_timer_signal_when_timer_box_exists(self) -> None:
+        self.assertTrue(_profile_has_timer_signal(VisionProfile(style="overlay_bar", timer_box_id="top_right")))
+
+    def test_build_general_visual_workout_summary_prefers_timer_path_when_timer_exists(self) -> None:
+        from pathlib import Path
+        from pipeline import vision as vision_module
+
+        original_extract_sample_frames = vision_module._extract_sample_frames
+        original_detect_visual_style = vision_module._detect_visual_style
+        original_build_timer_workout_summary = vision_module.build_timer_workout_summary
+        original_build_visual_workout_summary = vision_module.build_visual_workout_summary
+
+        timer_summary = object()
+        calls: list[str] = []
+        vision_module._extract_sample_frames = lambda **_: [(0.0, Path("frame0.jpg"))]
+        vision_module._detect_visual_style = lambda *_: VisionProfile(
+            style="overlay_bar",
+            overlay_hits=4,
+            timer_hits=12,
+            timer_box_id="top_right",
+            preview_box_id="upper_left_wide",
+            preview_box_ratios=(0.0, 0.0, 0.5, 0.2),
+        )
+
+        def fake_timer(**kwargs):
+            calls.append("timer")
+            return timer_summary
+
+        def fake_overlay(**kwargs):
+            calls.append("overlay")
+            raise AssertionError("overlay path should not be used when timer is detected")
+
+        vision_module.build_timer_workout_summary = fake_timer
+        vision_module.build_visual_workout_summary = fake_overlay
+        try:
+            result = build_general_visual_workout_summary(
+                video_path=Path("video.mp4"),
+                workdir=Path("workdir"),
+                title="Sample",
+                source_url="https://example.com",
+                total_duration_sec=60.0,
+                language="en",
+            )
+        finally:
+            vision_module._extract_sample_frames = original_extract_sample_frames
+            vision_module._detect_visual_style = original_detect_visual_style
+            vision_module.build_timer_workout_summary = original_build_timer_workout_summary
+            vision_module.build_visual_workout_summary = original_build_visual_workout_summary
+
+        self.assertIs(result, timer_summary)
+        self.assertEqual(calls, ["timer"])
+
+    def test_build_general_visual_workout_summary_uses_overlay_only_without_timer_signal(self) -> None:
+        from pathlib import Path
+        from pipeline import vision as vision_module
+
+        original_extract_sample_frames = vision_module._extract_sample_frames
+        original_detect_visual_style = vision_module._detect_visual_style
+        original_build_timer_workout_summary = vision_module.build_timer_workout_summary
+        original_build_visual_workout_summary = vision_module.build_visual_workout_summary
+
+        overlay_summary = object()
+        calls: list[str] = []
+        vision_module._extract_sample_frames = lambda **_: [(0.0, Path("frame0.jpg"))]
+        vision_module._detect_visual_style = lambda *_: VisionProfile(style="overlay_bar", overlay_hits=4)
+
+        def fake_timer(**kwargs):
+            calls.append("timer")
+            raise AssertionError("timer path should not be used without timer evidence")
+
+        def fake_overlay(**kwargs):
+            calls.append("overlay")
+            return overlay_summary
+
+        vision_module.build_timer_workout_summary = fake_timer
+        vision_module.build_visual_workout_summary = fake_overlay
+        try:
+            result = build_general_visual_workout_summary(
+                video_path=Path("video.mp4"),
+                workdir=Path("workdir"),
+                title="Sample",
+                source_url="https://example.com",
+                total_duration_sec=60.0,
+                language="en",
+            )
+        finally:
+            vision_module._extract_sample_frames = original_extract_sample_frames
+            vision_module._detect_visual_style = original_detect_visual_style
+            vision_module.build_timer_workout_summary = original_build_timer_workout_summary
+            vision_module.build_visual_workout_summary = original_build_visual_workout_summary
+
+        self.assertIs(result, overlay_summary)
+        self.assertEqual(calls, ["overlay"])
+
     def test_rapidocr_python_falls_back_to_current_interpreter(self) -> None:
         from pipeline import vision as vision_module
 
@@ -187,6 +285,24 @@ class VisionTests(unittest.TestCase):
         self.assertIn(19, targets)
         self.assertNotIn(13, targets)
         self.assertNotIn(15, targets)
+
+    def test_count_descending_pairs_accepts_sparse_probe_countdowns(self) -> None:
+        descending_pairs, reset_hits, longest_streak = _count_descending_pairs(
+            [29, 25, 21, 17, 13, 9, 5, 1, None, 29, 25]
+        )
+
+        self.assertGreaterEqual(descending_pairs, 7)
+        self.assertGreaterEqual(reset_hits, 0)
+        self.assertGreaterEqual(longest_streak, 6)
+
+    def test_count_descending_pairs_rejects_five_second_step_sequences(self) -> None:
+        descending_pairs, reset_hits, longest_streak = _count_descending_pairs(
+            [30, 25, 20, 15, 10, 5]
+        )
+
+        self.assertEqual(descending_pairs, 0)
+        self.assertEqual(reset_hits, 0)
+        self.assertEqual(longest_streak, 0)
 
     def test_build_ocr_crops_reuses_identical_existing_crop(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

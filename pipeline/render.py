@@ -81,12 +81,6 @@ def _render_card(step: WorkoutStep) -> str:
         notes_html = (
             f'<p class="card-notes"><strong>Notes:</strong> {html.escape(step.notes)}</p>'
         )
-    source_label = _format_name_source(step.name_source)
-    source_html = (
-        f'<p class="card-source"><strong>Name Source:</strong> {html.escape(source_label)}</p>'
-        if source_label
-        else ""
-    )
     screenshot_label = (
         f'<p class="card-shot">Screenshot at {_format_seconds(step.screenshot_time_sec)}</p>'
         if step.screenshot_time_sec is not None
@@ -100,7 +94,6 @@ def _render_card(step: WorkoutStep) -> str:
         <h2>{html.escape(step.name)}</h2>
         <p class="card-time">{_format_seconds(step.start_sec)} - {_format_seconds(step.end_sec)}</p>
         <p class="card-metrics">{html.escape(_metric_line(step))}</p>
-        {source_html}
         {notes_html}
         {screenshot_label}
       </div>
