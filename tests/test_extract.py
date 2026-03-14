@@ -15,6 +15,9 @@ class ExtractTests(unittest.TestCase):
             "Jumping Jacks",
         )
 
+    def test_extract_action_name_ignores_side_switch_transition(self) -> None:
+        self.assertIsNone(extract_action_name("Switch sides"))
+
     def test_build_workout_summary_extracts_steps_metrics(self) -> None:
         transcript = Transcript(
             language="en",
@@ -56,6 +59,40 @@ class ExtractTests(unittest.TestCase):
         self.assertEqual(summary.steps[1].reps, 12)
         self.assertEqual(summary.steps[2].duration_sec, 20.0)
         self.assertTrue(all(step.name_source == "transcript_rule" for step in summary.steps))
+
+    def test_build_workout_summary_does_not_promote_side_switch_cue_to_step(self) -> None:
+        transcript = Transcript(
+            language="en",
+            source="subtitles",
+            segments=[
+                TranscriptSegment(
+                    start_sec=0.0,
+                    end_sec=4.0,
+                    text="Start with side plank for 20 seconds",
+                ),
+                TranscriptSegment(
+                    start_sec=4.0,
+                    end_sec=5.0,
+                    text="Switch sides",
+                ),
+                TranscriptSegment(
+                    start_sec=5.0,
+                    end_sec=9.0,
+                    text="Hold for 20 seconds",
+                ),
+            ],
+        )
+
+        summary = build_workout_summary(
+            transcript=transcript,
+            title="Quick Workout",
+            source_url="https://youtube.com/watch?v=test",
+            total_duration_sec=10.0,
+            language="en",
+        )
+
+        self.assertEqual([step.name for step in summary.steps], ["Side Plank"])
+        self.assertEqual(summary.steps[0].end_sec, 10.0)
 
     def test_summary_needs_visual_fallback_when_noise_dominates(self) -> None:
         transcript = Transcript(
