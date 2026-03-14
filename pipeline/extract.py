@@ -42,6 +42,15 @@ FILLER_PREFIXES = [
     "for",
     "do",
 ]
+SIDE_SWITCH_ONLY = {
+    "switch side",
+    "switch sides",
+    "other side",
+    "both side",
+    "both sides",
+    "left",
+    "right",
+}
 
 
 def _normalize_whitespace(text: str) -> str:
@@ -114,6 +123,8 @@ def extract_action_name(text: str) -> str | None:
     cleaned = _normalize_whitespace(cleaned)
     cleaned = re.sub(r"\bseconds?\b|\bminutes?\b|\bsec\b|\bmin\b", "", cleaned)
     cleaned = _normalize_whitespace(cleaned)
+    if cleaned in SIDE_SWITCH_ONLY:
+        return None
     if not cleaned or len(cleaned) < 3:
         return None
     if len(cleaned.split()) > 8:
