@@ -52,7 +52,7 @@ class MainTests(unittest.TestCase):
         original_load_transcript_with_fallback = main_module._load_transcript_with_fallback
         original_build_workout_summary = main_module.build_workout_summary
         original_build_general_visual_workout_summary = main_module.build_general_visual_workout_summary
-        original_capture_step_frames = main_module.capture_step_frames
+        original_capture_step_clips = main_module.capture_step_clips
         original_render_summary_html = main_module.render_summary_html
         original_write_json = main_module.write_json
 
@@ -103,7 +103,7 @@ class MainTests(unittest.TestCase):
                 return visual_summary
 
             main_module.build_general_visual_workout_summary = fake_build_general_visual_workout_summary
-            main_module.capture_step_frames = lambda video_path, steps, workdir: steps
+            main_module.capture_step_clips = lambda video_path, steps, workdir: steps
             main_module.render_summary_html = lambda summary, path: path.write_text("ok", encoding="utf-8")
             main_module.write_json = lambda path, payload: path.write_text(json.dumps(payload), encoding="utf-8")
             try:
@@ -116,7 +116,7 @@ class MainTests(unittest.TestCase):
                 main_module._load_transcript_with_fallback = original_load_transcript_with_fallback
                 main_module.build_workout_summary = original_build_workout_summary
                 main_module.build_general_visual_workout_summary = original_build_general_visual_workout_summary
-                main_module.capture_step_frames = original_capture_step_frames
+                main_module.capture_step_clips = original_capture_step_clips
                 main_module.render_summary_html = original_render_summary_html
                 main_module.write_json = original_write_json
 
@@ -162,7 +162,7 @@ class MainTests(unittest.TestCase):
             self.assertTrue(first.exists())
             self.assertTrue(second.exists())
 
-    def test_copy_kept_artifacts_rewrites_screenshot_paths(self) -> None:
+    def test_copy_kept_artifacts_rewrites_media_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output_path = Path(temp_dir) / "summary.html"
             temp_dir_wrapper = tempfile.TemporaryDirectory(dir=temp_dir)
@@ -171,6 +171,9 @@ class MainTests(unittest.TestCase):
                 frames_dir = kept_dir / "frames"
                 frames_dir.mkdir(parents=True, exist_ok=True)
                 (frames_dir / "step_001.jpg").write_bytes(b"jpg")
+                clips_dir = kept_dir / "clips"
+                clips_dir.mkdir(parents=True, exist_ok=True)
+                (clips_dir / "step_001.gif").write_bytes(b"gif")
                 (kept_dir / "workout_summary.json").write_text(
                     json.dumps(
                         {
@@ -179,6 +182,7 @@ class MainTests(unittest.TestCase):
                                     "index": 1,
                                     "name": "Jumping Jacks",
                                     "screenshot_path": str(frames_dir / "step_001.jpg"),
+                                    "clip_path": str(clips_dir / "step_001.gif"),
                                 }
                             ]
                         }
@@ -189,10 +193,13 @@ class MainTests(unittest.TestCase):
                 copied_path = main_module._copy_kept_artifacts(temp_dir_wrapper, output_path)
                 payload = json.loads((copied_path / "workout_summary.json").read_text(encoding="utf-8"))
                 screenshot_path = Path(payload["steps"][0]["screenshot_path"])
+                clip_path = Path(payload["steps"][0]["clip_path"])
 
                 self.assertEqual(copied_path.name, "summary_artifacts")
                 self.assertEqual(screenshot_path, (copied_path / "frames" / "step_001.jpg").resolve())
+                self.assertEqual(clip_path, (copied_path / "clips" / "step_001.gif").resolve())
                 self.assertTrue(screenshot_path.exists())
+                self.assertTrue(clip_path.exists())
             finally:
                 temp_dir_wrapper.cleanup()
 

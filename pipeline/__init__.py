@@ -1,6 +1,6 @@
 from .download import DownloadError, download_best_subtitle, download_video, fetch_video_metadata
 from .extract import build_workout_summary, summary_needs_visual_fallback
-from .frames import FrameCaptureError, capture_step_frames
+from .frames import FrameCaptureError, capture_step_clips, capture_step_frames
 from .render import RenderError, render_summary_html
 from .transcribe import (
     TranscriptError,
@@ -24,6 +24,7 @@ __all__ = [
     "build_general_visual_workout_summary",
     "build_timer_workout_summary",
     "build_visual_workout_summary",
+    "capture_step_clips",
     "capture_step_frames",
     "download_best_subtitle",
     "download_video",

@@ -25,17 +25,16 @@ def _format_seconds(seconds: float | None) -> str:
     return f"{minutes:02d}:{remainder:02d}"
 
 
-def _image_to_data_url(image_path: str | None) -> str:
-    if not image_path:
+def _file_to_data_url(path_value: str | None) -> str:
+    if not path_value:
         return ""
-    path = Path(image_path)
+    path = Path(path_value)
     if not path.exists():
-        raise RenderError(f"Screenshot file does not exist: {path}")
-    image_bytes = path.read_bytes()
-    encoded = base64.b64encode(image_bytes).decode("ascii")
+        return ""
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     mime_type, _encoding = mimetypes.guess_type(path.name)
-    if mime_type is None or not mime_type.startswith("image/"):
-        mime_type = "image/jpeg"
+    if mime_type is None:
+        mime_type = "application/octet-stream"
     return f"data:{mime_type};base64,{encoded}"
 
 
@@ -50,42 +49,36 @@ def _metric_line(step: WorkoutStep) -> str:
     return " | ".join(metrics) if metrics else "Duration / reps / sets not detected"
 
 
-def _format_name_source(source: str | None) -> str | None:
-    labels = {
-        "transcript_rule": "Transcript rules",
-        "transcript_llm": "Transcript LLM",
-        "vision_overlay": "Overlay OCR",
-        "vision_overlay_gap": "Overlay gap detection",
-        "timer_explicit": "Timer explicit OCR",
-        "timer_candidate": "Timer OCR candidate",
-        "timer_rest_hint": "Rest-card hint",
-        "timer_visual": "Visual match fallback",
-        "timer_fallback": "Generated fallback",
-        "timer_color": "Timer color state",
-        "timer_rest": "Timer countdown",
-    }
-    if source is None:
-        return None
-    return labels.get(source, source.replace("_", " ").title())
-
-
 def _render_card(step: WorkoutStep) -> str:
-    image_url = _image_to_data_url(step.screenshot_path)
-    media_html = (
-        f'<img src="{image_url}" alt="{html.escape(step.name)} screenshot" class="card-image" />'
-        if image_url
-        else '<div class="card-image card-image--empty">Screenshot unavailable</div>'
-    )
+    clip_url = _file_to_data_url(step.clip_path)
+    image_url = _file_to_data_url(step.screenshot_path)
+    clip_extension = Path(step.clip_path).suffix.lower() if step.clip_path else ""
+    if clip_url and clip_extension == ".gif":
+        media_html = f'<img src="{clip_url}" alt="{html.escape(step.name)} clip" class="card-image" />'
+    elif clip_url:
+        media_html = (
+            f'<video src="{clip_url}" class="card-image" autoplay muted loop playsinline preload="metadata"></video>'
+        )
+    elif image_url:
+        media_html = f'<img src="{image_url}" alt="{html.escape(step.name)} screenshot" class="card-image" />'
+    else:
+        media_html = '<div class="card-image card-image--empty">Media unavailable</div>'
+
     notes_html = ""
     if step.notes:
         notes_html = (
             f'<p class="card-notes"><strong>Notes:</strong> {html.escape(step.notes)}</p>'
         )
-    screenshot_label = (
-        f'<p class="card-shot">Screenshot at {_format_seconds(step.screenshot_time_sec)}</p>'
-        if step.screenshot_time_sec is not None
-        else ""
-    )
+    if step.clip_start_sec is not None and step.clip_duration_sec is not None:
+        media_label = (
+            f'<p class="card-shot">Clip: {_format_seconds(step.clip_start_sec)} '
+            f'({step.clip_duration_sec:.1f}s)</p>'
+        )
+    elif step.screenshot_time_sec is not None:
+        media_label = f'<p class="card-shot">Screenshot at {_format_seconds(step.screenshot_time_sec)}</p>'
+    else:
+        media_label = ""
+
     return f"""
     <article class="card">
       {media_html}
@@ -95,7 +88,7 @@ def _render_card(step: WorkoutStep) -> str:
         <p class="card-time">{_format_seconds(step.start_sec)} - {_format_seconds(step.end_sec)}</p>
         <p class="card-metrics">{html.escape(_metric_line(step))}</p>
         {notes_html}
-        {screenshot_label}
+        {media_label}
       </div>
     </article>
     """.strip()

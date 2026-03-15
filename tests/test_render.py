@@ -3,8 +3,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from PIL import Image
-
 from pipeline.render import render_summary_html
 from schemas import WorkoutStep, WorkoutSummary
 
@@ -20,11 +18,11 @@ JPEG_BASE64 = (
 
 
 class RenderTests(unittest.TestCase):
-    def test_render_summary_html_preserves_png_mime_type(self) -> None:
+    def test_render_summary_html_embeds_gif_clip(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
-            image_path = temp_path / "step_001.png"
-            Image.new("RGB", (2, 2), color=(255, 0, 0)).save(image_path)
+            clip_path = temp_path / "step_001.gif"
+            clip_path.write_bytes(b"fake-gif")
             output_path = temp_path / "summary.html"
 
             summary = WorkoutSummary(
@@ -40,7 +38,9 @@ class RenderTests(unittest.TestCase):
                         start_sec=0.0,
                         end_sec=30.0,
                         duration_sec=30.0,
-                        screenshot_path=str(image_path),
+                        clip_start_sec=8.0,
+                        clip_duration_sec=5.0,
+                        clip_path=str(clip_path),
                     )
                 ],
             )
@@ -48,9 +48,11 @@ class RenderTests(unittest.TestCase):
             render_summary_html(summary, output_path)
             html = output_path.read_text(encoding="utf-8")
 
-            self.assertIn("data:image/png;base64", html)
+            self.assertIn("data:image/gif;base64", html)
+            self.assertIn("<img", html)
+            self.assertNotIn("<video", html)
 
-    def test_render_summary_html_embeds_image(self) -> None:
+    def test_render_summary_html_falls_back_to_image(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             image_path = temp_path / "step_001.jpg"
@@ -84,9 +86,39 @@ class RenderTests(unittest.TestCase):
             html = output_path.read_text(encoding="utf-8")
 
             self.assertIn("data:image/jpeg;base64", html)
+            self.assertIn("<img", html)
             self.assertIn("Jumping Jacks", html)
             self.assertIn("Sample Workout", html)
             self.assertNotIn("Name Source:", html)
+
+    def test_render_summary_html_shows_media_fallback_for_missing_clip(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            output_path = temp_path / "summary.html"
+
+            summary = WorkoutSummary(
+                title="Sample Workout",
+                source_url="https://youtube.com/watch?v=test",
+                language="en",
+                total_duration_sec=90.0,
+                transcript_source="subtitles",
+                steps=[
+                    WorkoutStep(
+                        index=1,
+                        name="Jumping Jacks",
+                        start_sec=0.0,
+                        end_sec=30.0,
+                        duration_sec=30.0,
+                        clip_path=str(temp_path / "missing.gif"),
+                    )
+                ],
+            )
+
+            render_summary_html(summary, output_path)
+            html = output_path.read_text(encoding="utf-8")
+
+            self.assertIn("Media unavailable", html)
+            self.assertNotIn("<video", html)
 
 
 if __name__ == "__main__":

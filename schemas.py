@@ -51,6 +51,9 @@ class WorkoutStep:
     sets: int | None = None
     notes: str | None = None
     name_source: str | None = None
+    clip_start_sec: float | None = None
+    clip_duration_sec: float | None = None
+    clip_path: str | None = None
     screenshot_time_sec: float | None = None
     screenshot_path: str | None = None
 
@@ -64,6 +67,8 @@ class WorkoutStep:
         data["start_sec"] = _round_float(self.start_sec)
         data["end_sec"] = _round_float(self.end_sec)
         data["duration_sec"] = _round_float(self.duration_sec)
+        data["clip_start_sec"] = _round_float(self.clip_start_sec)
+        data["clip_duration_sec"] = _round_float(self.clip_duration_sec)
         data["screenshot_time_sec"] = _round_float(self.screenshot_time_sec)
         return data
 

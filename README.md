@@ -1,6 +1,6 @@
 # YouTube Exercise Summary
 
-Generate a single-file HTML summary from a workout-style YouTube video. The output includes one representative screenshot per action plus any detected duration, reps, sets, and name provenance.
+Generate a single-file HTML summary from a workout-style YouTube video. The output includes one 5-second GIF clip per action plus any detected duration, reps, sets, and name provenance.
 
 ## What It Does
 
@@ -76,9 +76,9 @@ Useful flags:
 
 Each run produces:
 
-- one standalone HTML file with embedded screenshots
+- one standalone HTML file with embedded 5-second GIF clips
 - intermediate transcript and summary JSON files inside the workdir
-- frame captures under `frames/`
+- clip files under `clips/`
 - OCR sidecar caches such as `*.ocr.json` and `*.ocr_boxes.json`
 
 The main machine-readable artifact is `workout_summary.json`.
@@ -97,7 +97,7 @@ The timer path is intentionally timer-centric instead of color-centric:
 - segment the workout from countdown resets and rest/prep countdowns
 - OCR only sparse preview frames plus dense windows around likely boundaries
 - keep track of whether an action name came from explicit OCR, weaker OCR, rest hints, or visual fallback
-- generate the final HTML from captured source frames
+- generate the final HTML from captured source clips
 
 The current design notes and explored trade-offs are documented in [`docs/iteration-notes.md`](./docs/iteration-notes.md).
 
@@ -117,4 +117,4 @@ Contributor notes live in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 - It is not a general video understanding system; it is optimized for timer-driven workout videos.
 - Action naming still depends on OCR quality and overlay layout.
 - Very long videos can still be OCR-heavy, especially during the initial timer-box detection pass.
-- Generated HTML embeds screenshots as base64, so large runs produce large output files.
+- Generated HTML embeds GIF clips as base64, so large runs can produce very large output files.

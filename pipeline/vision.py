@@ -2816,6 +2816,146 @@ def _assign_timeline_preview_names(
         )
 
 
+def _collect_missing_action_segment_indexes(segments: list[TimerTimelineSegment]) -> list[int]:
+    return [
+        index
+        for index, segment in enumerate(segments)
+        if segment.kind == "action" and not _is_plausible_preview_name(segment.preview_name)
+    ]
+
+
+def _select_missing_name_retry_indexes(
+    segments: list[TimerTimelineSegment],
+    total_count: int,
+) -> set[int]:
+    retry_indexes: set[int] = set()
+    if total_count <= 0:
+        return retry_indexes
+
+    for index, segment in enumerate(segments):
+        if segment.kind != "action" or _is_plausible_preview_name(segment.preview_name):
+            continue
+
+        _add_retry_window(
+            retry_indexes,
+            total_count,
+            segment.start_index - 10,
+            segment.start_index + 12,
+            anchor_index=segment.start_index,
+            stride=2,
+            dense_radius=2,
+        )
+        _add_retry_window(
+            retry_indexes,
+            total_count,
+            segment.start_index + 8,
+            segment.start_index + 20,
+            anchor_index=segment.start_index + 10,
+            stride=3,
+            dense_radius=1,
+        )
+
+        if index > 0 and segments[index - 1].kind == "rest":
+            previous = segments[index - 1]
+            rest_end_index = max(previous.start_index, previous.end_index - 1)
+            _add_retry_window(
+                retry_indexes,
+                total_count,
+                previous.end_index - 10,
+                previous.end_index + 6,
+                anchor_index=rest_end_index,
+                stride=2,
+                dense_radius=2,
+            )
+            if previous.end_index - previous.start_index > 4:
+                rest_midpoint = previous.start_index + (previous.end_index - previous.start_index) // 2
+                _add_retry_window(
+                    retry_indexes,
+                    total_count,
+                    rest_midpoint - 2,
+                    rest_midpoint + 3,
+                    anchor_index=rest_midpoint,
+                    stride=1,
+                    dense_radius=1,
+                )
+    return retry_indexes
+
+
+def _merge_label_texts(existing_texts: list[str], new_texts: list[str]) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for text in [*existing_texts, *new_texts]:
+        cleaned = _clean_text(text)
+        if not cleaned:
+            continue
+        marker = cleaned.upper()
+        if marker in seen:
+            continue
+        seen.add(marker)
+        merged.append(cleaned)
+    return merged
+
+
+def _rescue_missing_timeline_preview_names(
+    sample_frames: list[tuple[float, Path]],
+    frame_infos: list[OcrFrameInfo],
+    segments: list[TimerTimelineSegment],
+    workdir: Path,
+    style_hint: str,
+    preview_box_id: str | None,
+    preview_box_ratios: tuple[float, float, float, float] | None,
+) -> None:
+    missing_indexes = _collect_missing_action_segment_indexes(segments)
+    if not missing_indexes:
+        return
+
+    target_indexes = _select_missing_name_retry_indexes(segments, len(sample_frames))
+    if not target_indexes:
+        return
+
+    max_retry_count = min(144, max(24, len(missing_indexes) * 24))
+    if len(target_indexes) > max_retry_count:
+        target_indexes = _compress_target_indexes(
+            target_indexes,
+            [info.timer_kind for info in frame_infos],
+            [info.timer_number for info in frame_infos],
+            max_count=max_retry_count,
+            min_gap=1,
+        )
+
+    rescue_label_map = _build_label_ocr_map(
+        sample_frames,
+        workdir,
+        style_hint,
+        preview_box_id,
+        preview_box_ratios,
+        target_indexes,
+    )
+    if not rescue_label_map:
+        return
+
+    for target_index in sorted(target_indexes):
+        frame_path = sample_frames[target_index][1]
+        rescue_texts = rescue_label_map.get(str(frame_path), [])
+        if not rescue_texts:
+            continue
+        info = frame_infos[target_index]
+        merged_texts = _merge_label_texts(info.label_texts, rescue_texts)
+        info.label_texts = merged_texts
+        info.explicit_preview_name = _extract_explicit_preview_name(merged_texts)
+        info.preview_name = _extract_action_name(merged_texts)
+
+    locked_segments = {
+        index: (segment.preview_name, segment.preview_name_source)
+        for index, segment in enumerate(segments)
+        if index not in missing_indexes
+    }
+    _assign_timeline_preview_names(frame_infos, segments)
+    for index, (preview_name, preview_source) in locked_segments.items():
+        segments[index].preview_name = preview_name
+        segments[index].preview_name_source = preview_source
+
+
 def _is_plausible_preview_name(name: str | None) -> bool:
     if name is None:
         return False
@@ -2998,6 +3138,15 @@ def _build_timer_segments_with_rapidocr(
         return []
     timeline_segments = _merge_timeline_segments(_build_timeline_segments(spans))
     _assign_timeline_preview_names(frame_infos, timeline_segments)
+    _rescue_missing_timeline_preview_names(
+        sample_frames=sample_frames,
+        frame_infos=frame_infos,
+        segments=timeline_segments,
+        workdir=workdir,
+        style_hint=style_hint,
+        preview_box_id=preview_box_id,
+        preview_box_ratios=preview_box_ratios,
+    )
     _assign_visual_fallback_names(frame_infos, timeline_segments)
 
     segments: list[TimerSegment] = []

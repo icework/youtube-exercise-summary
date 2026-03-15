@@ -510,6 +510,102 @@ class VisionTests(unittest.TestCase):
             ],
         )
 
+    def test_build_timer_segments_with_rapidocr_rescues_missing_late_action_name(self) -> None:
+        from pathlib import Path
+        from pipeline import vision as vision_module
+
+        frame_infos: list[OcrFrameInfo] = []
+        for second in range(4):
+            frame_infos.append(
+                OcrFrameInfo(
+                    time_sec=float(second),
+                    label_texts=["NEXT: JUMPING JACKS"],
+                    timer_texts=["REST", str(4 - second)],
+                    timer_number=4 - second,
+                    timer_kind="rest",
+                    explicit_preview_name="Jumping Jacks",
+                    preview_name="Jumping Jacks",
+                )
+            )
+        for second in range(4, 34):
+            frame_infos.append(
+                OcrFrameInfo(
+                    time_sec=float(second),
+                    label_texts=[],
+                    timer_texts=[str(34 - second)],
+                    timer_number=34 - second,
+                    timer_kind=None,
+                    explicit_preview_name=None,
+                    preview_name=None,
+                )
+            )
+        for second in range(34, 44):
+            frame_infos.append(
+                OcrFrameInfo(
+                    time_sec=float(second),
+                    label_texts=[],
+                    timer_texts=["REST", str(44 - second)],
+                    timer_number=44 - second,
+                    timer_kind="rest",
+                    explicit_preview_name=None,
+                    preview_name=None,
+                )
+            )
+        for second in range(44, 74):
+            frame_infos.append(
+                OcrFrameInfo(
+                    time_sec=float(second),
+                    label_texts=[],
+                    timer_texts=[str(74 - second)],
+                    timer_number=74 - second,
+                    timer_kind=None,
+                    explicit_preview_name=None,
+                    preview_name=None,
+                )
+            )
+
+        sample_frames = [(float(index), Path(f"frame-{index}.jpg")) for index in range(len(frame_infos))]
+        original_build_ocr_frame_infos = vision_module._build_ocr_frame_infos
+        original_build_label_ocr_map = vision_module._build_label_ocr_map
+
+        rescue_calls: list[set[int]] = []
+
+        def fake_build_label_ocr_map(
+            sample_frames,
+            workdir,
+            style_hint,
+            preview_box_id,
+            preview_box_ratios,
+            target_indexes,
+        ):
+            assert target_indexes is not None
+            rescue_calls.append(set(target_indexes))
+            return {
+                str(sample_frames[42][1]): ["NEXT: BURPEE"],
+            }
+
+        vision_module._build_ocr_frame_infos = lambda *_args, **_kwargs: frame_infos
+        vision_module._build_label_ocr_map = fake_build_label_ocr_map
+        try:
+            segments = _build_timer_segments_with_rapidocr(
+                sample_frames=sample_frames,
+                workdir=Path("workdir"),
+                style_hint="timer_next_card",
+                timer_box_id="top_right",
+                preview_box_id="upper_band",
+            )
+        finally:
+            vision_module._build_ocr_frame_infos = original_build_ocr_frame_infos
+            vision_module._build_label_ocr_map = original_build_label_ocr_map
+
+        action_segments = [segment for segment in segments if segment.kind == "action"]
+        self.assertEqual(action_segments[0].name, "Jumping Jacks")
+        self.assertEqual(action_segments[1].name, "Burpee")
+        self.assertEqual(action_segments[1].name_source, "timer_explicit")
+        self.assertEqual(len(rescue_calls), 1)
+        self.assertGreater(len(rescue_calls[0]), 0)
+        self.assertLess(len(rescue_calls[0]), len(sample_frames))
+
     def test_build_ocr_frame_infos_retries_boundary_preview_ocr_when_sparse_preview_is_empty(self) -> None:
         from pathlib import Path
         from pipeline import vision as vision_module

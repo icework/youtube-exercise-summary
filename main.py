@@ -15,7 +15,7 @@ from pipeline import (
     VisionExtractionError,
     build_general_visual_workout_summary,
     build_workout_summary,
-    capture_step_frames,
+    capture_step_clips,
     download_best_subtitle,
     download_video,
     fetch_video_metadata,
@@ -89,11 +89,16 @@ def _rewrite_copied_summary_paths(destination: Path) -> None:
         return
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     frames_dir = destination / "frames"
+    clips_dir = destination / "clips"
     for step in payload.get("steps", []):
         screenshot_path = step.get("screenshot_path")
         if screenshot_path:
             frame_name = Path(str(screenshot_path)).name
             step["screenshot_path"] = str((frames_dir / frame_name).resolve())
+        clip_path = step.get("clip_path")
+        if clip_path:
+            clip_name = Path(str(clip_path)).name
+            step["clip_path"] = str((clips_dir / clip_name).resolve())
     summary_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -239,8 +244,8 @@ def main() -> int:
                     language=args.language if args.language != "auto" else "unknown",
                 )
 
-            print("Capturing representative screenshots...")
-            capture_step_frames(video_path, summary.steps, workdir)
+            print("Capturing representative video clips...")
+            capture_step_clips(video_path, summary.steps, workdir)
 
             summary_json_path = workdir / "workout_summary.json"
             write_json(summary_json_path, summary.to_dict())
